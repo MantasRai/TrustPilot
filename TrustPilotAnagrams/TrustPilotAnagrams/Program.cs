@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace TrustPilotAnagrams
@@ -36,7 +37,6 @@ namespace TrustPilotAnagrams
                 .Distinct()
                 .ToList();
 
-            ThreeWordsAnagrams(wordlist, anagramWithoutSpaces, anagramlength, listOfChars);
             AlertHashStatus();
             FourWordsAnagrams(wordlist, anagramWithoutSpaces, anagramlength);
             AlertHashStatus(1);
@@ -50,80 +50,91 @@ namespace TrustPilotAnagrams
             Console.ReadKey();
         }
 
-        public static void ThreeWordsAnagrams(List<string> lineWorker, string anagramWithoutSpaces, int anagramlength, string[] listOfChars)
+        public static void FourWordsAnagrams(List<string> lineWorker, string anagramWithoutSpaces, int anagramlength)
         {
-
-            var words = lineWorker.GroupBy(s => s.Length, s => s).ToDictionary(k => k.Key, k => new HashSet<string>(k));
+            var words = WordWithCleanLetters(lineWorker);
             var possbileWrapCombinations = PrintCombinations(anagramlength, 3);
+            possbileWrapCombinations.AddRange(PrintCombinations(anagramlength, 4));
 
-            foreach (var combination in possbileWrapCombinations)
+            Parallel.ForEach(possbileWrapCombinations, combination =>
             {
-                var combinationVal = combination.Split(',');
+                var combinationVal = combination.Split(',').Select(int.Parse).ToArray();
+                RecursiveMethod(anagramWithoutSpaces, words, combinationVal, 0, "");
+                 
+            });
+        }
 
-                var firsWrapperList = words.Where(x => x.Key == int.Parse(combinationVal[0])).Select(x => x.Value).ToList();
-                var secondWrapperList = words.Where(x => x.Key == int.Parse(combinationVal[1])).Select(x => x.Value).ToList();
-                var thirdWrapperList = words.Where(x => x.Key == int.Parse(combinationVal[2])).Select(x => x.Value).ToList();
+        private static void RecursiveMethod(string anagramWithoutSpaces, Dictionary<int, HashSet<string>> words,
+            IReadOnlyList<int> combinationVal, int i, string anagram)
+        {
+            if (combinationVal.Count == i || CorrectDictionary.Count == CorrectHashDict.Count)
+            {
+                return;
+            }
 
-                var firstWrapperWordDictionary = firsWrapperList[0].Select(s => s)
-                    .ToDictionary(k => k,
-                        k => new HashSet<string>(secondWrapperList[0]
-                                .Where(x => x != k && CompareStrings(anagramWithoutSpaces, x + k)))
-                            .ToDictionary(kk => kk,
-                                kk => new HashSet<string>(thirdWrapperList[0]
-                                    .Where(xx => xx != kk && xx != k && k != kk && CompareStrings(anagramWithoutSpaces, xx + k + kk)))));
+            var wrapper = words.Where(x => x.Key == combinationVal[i]).Select(x => x.Value)
+                .ToList();
 
-                var anagramss = new List<string>();
-                foreach (var fff in firstWrapperWordDictionary)
+            if (!wrapper.Any())
+                return;
+
+            foreach (var word in wrapper.First())
+            {
+                var str = CharsToRemove(word, anagramWithoutSpaces);
+
+                if (str.Length != anagramWithoutSpaces.Length - combinationVal[i])
                 {
-                    if (fff.Value.Count <= 0) continue;
-                    foreach (var ff in fff.Value)
-                    {
-                        if (ff.Value.Count <= 0) continue;
-                        anagramss.AddRange(ff.Value.Select(f => fff.Key + " " + ff.Key + " " + f));
-                    }
+                    continue;
                 }
-                CheckHash(anagramss);
+
+                if (str.Length == 0)
+                {
+                    CheckHash(new List<string>()
+                    {
+                        anagram + " " + word
+                    });
+                }
+
+                var anagrame = anagram + " " + word;
+                var j = i + 1;
+                RecursiveMethod(str, words, combinationVal, j, anagrame);
             }
         }
 
-        public static void FourWordsAnagrams(List<string> lineWorker, string anagramWithoutSpaces, int anagramlength)
+        private static string CharsToRemove(string second, string str)
         {
-            var words = lineWorker.GroupBy(s => s.Length, s => s).ToDictionary(k => k.Key, k => new HashSet<string>(k));
-            var possbileWrapCombinations = PrintCombinations(anagramlength, 4);
-
-            foreach (var combination in possbileWrapCombinations)
+            foreach (var index in second.Select(s => str.IndexOf(s.ToString(), StringComparison.Ordinal)))
             {
-                var combinationVal = combination.Split(',');
-
-                var firsWrapperList = words.Where(x => x.Key == int.Parse(combinationVal[0])).Select(x => x.Value).ToList();
-                var secondWrapperList = words.Where(x => x.Key == int.Parse(combinationVal[1])).Select(x => x.Value).ToList();
-                var thirdWrapperList = words.Where(x => x.Key == int.Parse(combinationVal[2])).Select(x => x.Value).ToList();
-                var fourthWrapperList = words.Where(x => x.Key == int.Parse(combinationVal[3])).Select(x => x.Value).ToList();
-
-                var firstWrapperWordDictionary = firsWrapperList[0].Select(s => s)
-                    .ToDictionary(k => k,
-                        k => new HashSet<string>(secondWrapperList[0]
-                            .Where(x => x != k && CompareStrings(anagramWithoutSpaces, x + k))));
-
-                Parallel.ForEach(firstWrapperWordDictionary, firstWrapp =>
-                {
-                    var anagrams = new List<string>();
-                    foreach (var secondWrapp in firstWrapp.Value)
-                    {
-                        foreach (var thirdWrapp in thirdWrapperList[0])
-                        {
-                            if (!CompareStrings(anagramWithoutSpaces,
-                                firstWrapp.Key + secondWrapp + thirdWrapp)) continue;
-
-                            var wrapper2 = fourthWrapperList[0].ToList();
-                            wrapper2.RemoveAll(x => !CompareStrings(anagramWithoutSpaces, firstWrapp.Key + secondWrapp + thirdWrapp + x));
-
-                            anagrams.AddRange(wrapper2.Select(fourWrapp => firstWrapp.Key + " " + secondWrapp + " " + thirdWrapp + " " + fourWrapp));
-                        }
-                    }
-                    CheckHash(anagrams);
-                });
+                str = (index < 0)
+                    ? str
+                    : str.Remove(index, 1);
             }
+
+            return str;
+        }
+
+        private static Dictionary<int, HashSet<string>> WordWithCleanLetters(IEnumerable<string> lineWorker)
+        {
+            var words = lineWorker.GroupBy(s => s.Length, s => s)
+                .ToDictionary(k => k.Key, k => new HashSet<string>(k));
+
+            var test = "";
+            foreach (var w in words)
+            {
+                foreach (var letters in w.Value)
+                {
+                    var cc = letters.ToCharArray();
+                    foreach (var c in cc)
+                    {
+                        if (!test.Contains(c.ToString()))
+                        {
+                            test += c;
+                        } 
+                    }
+                }
+            }
+
+            return words;
         }
 
         public static void AlertHashStatus(int finalResult = 0)
@@ -156,8 +167,7 @@ namespace TrustPilotAnagrams
             {
                 foreach (var anag in PermuteWords(anagr))
                 {
-                    string hashName;
-                    if (CorrectHashDict.TryGetValue(CreateMd5(anag.TrimStart()), out hashName) && hashName != null &&
+                    if (CorrectHashDict.TryGetValue(CreateMd5(anag.TrimStart()), out var hashName) && hashName != null &&
                         !CorrectDictionary.ContainsKey(hashName))
                     {
                         CorrectDictionary.Add(hashName, anag.TrimStart());
@@ -166,17 +176,31 @@ namespace TrustPilotAnagrams
             }
         }
 
+        private static bool CompareStringsNew(string letters, string word)
+        {
+            // return letters.OrderBy(x => x).SequenceEqual(word.OrderBy(x => x));
+
+            foreach (var ix in letters.Select(c => word.IndexOf(c)))
+            {
+                if (ix < 0)
+                    return false;
+                word = word.Remove(ix, 1);
+            }
+
+            return true;
+        }
+
         private static bool CompareStrings(string letters, string word)
         {
-            foreach (var t in word)
+            foreach (var index in word.Select(t => letters.IndexOf(t)))
             {
-                var index = letters.IndexOf(t);
                 if (index == -1)
                 {
                     return false;
                 }
                 letters = letters.Substring(0, index) + letters.Substring(index + 1);
             }
+
             return true;
         }
 
@@ -194,7 +218,7 @@ namespace TrustPilotAnagrams
         {
             if (level == ss.Count && res != "")
             {
-                list.Add(res);
+                list.Add(res.Trim());
                 return;
             }
             for (var i = 0; i < ss.Count; i++)
